@@ -6,7 +6,7 @@ import {
   estimateTransactionFee,
 } from "@/lib/solana-service"
 import { getPoolById } from "@/lib/pool-service"
-import { prisma } from "@/lib/prisma"
+import { getEntry } from "@/lib/entry-service"
 
 /**
  * POST /api/tx/claim
@@ -75,12 +75,7 @@ export async function POST(request: Request) {
     }
 
     // Check if user has entry in this pool
-    const entry = await prisma.entry.findFirst({
-      where: {
-        poolId: pool_id,
-        userPubkey: user_pubkey,
-      },
-    })
+    const entry = await getEntry(pool_id, user_pubkey)
 
     if (!entry) {
       return NextResponse.json(
@@ -109,20 +104,25 @@ export async function POST(request: Request) {
       )
     }
 
+    // Convert string values to BigInt for calculations
+    const amountLamports = BigInt(entry.amount_lamports)
+    const totalOver = BigInt(pool.totals.over)
+    const totalUnder = BigInt(pool.totals.under)
+
     // Calculate estimated payout
     let payoutEstimate: bigint
     if (pool.winner === "Void") {
       // Void: return original amount
-      payoutEstimate = entry.amountLamports
+      payoutEstimate = amountLamports
     } else {
       // Winner: proportional share of total pool
       const winningSideTotal =
-        pool.winner === "Over" ? pool.total_over : pool.total_under
-      const totalPool = pool.total_over + pool.total_under
+        pool.winner === "Over" ? totalOver : totalUnder
+      const totalPool = totalOver + totalUnder
 
       // payout = (user_amount / winning_side_total) * total_pool
       payoutEstimate =
-        (entry.amountLamports * totalPool) / winningSideTotal
+        (amountLamports * totalPool) / winningSideTotal
     }
 
     // Build transaction
