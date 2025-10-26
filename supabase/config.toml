@@ -1,0 +1,22 @@
+# Supabase Edge Functions Configuration
+
+[project]
+id = "YOUR_PROJECT_ID"
+
+[functions]
+# Edge Functions configuration
+import_map = "./import_map.json"
+
+[functions.pools-top]
+verify_jwt = false
+
+[functions.pool-detail]
+verify_jwt = false
+
+[functions.tx-enter]
+verify_jwt = false
+
+[functions.tx-claim]
+verify_jwt = false
+
+

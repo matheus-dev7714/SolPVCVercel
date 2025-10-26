@@ -1,0 +1,39 @@
+# Replit Deployment Checklist
+
+## Pre-Deployment
+- [ ] Repository pushed to GitHub
+- [ ] Reviewed REPLIT_SETUP.md guide
+
+## On Replit
+- [ ] Imported repository to Replit
+- [ ] Environment variables configured (see env.example)
+  - [ ] DATABASE_URL
+  - [ ] SOLANA_RPC_URL
+  - [ ] NEXT_PUBLIC_SOLANA_PROGRAM_ID
+  - [ ] NEXT_PUBLIC_BASE_URL (set to your .repl.co URL)
+
+## Setup Commands (in Replit Shell)
+- [ ] npm install
+- [ ] npm run db:generate
+- [ ] npm run db:migrate
+- [ ] npm run db:seed
+
+## Verification
+- [ ] App starts without errors
+- [ ] Homepage displays pools
+- [ ] Pool detail pages work
+- [ ] Charts render correctly
+
+## For Full Functionality
+- [ ] Deploy Solana program (see REPLIT_SETUP.md)
+- [ ] Update NEXT_PUBLIC_SOLANA_PROGRAM_ID with deployed program
+- [ ] Configure Shadow Drive (optional)
+- [ ] Set up PostgreSQL (recommended for production)
+
+## Troubleshooting
+If something doesn't work:
+1. Check the Shell for error messages
+2. Verify all environment variables are set
+3. Try: npm run db:reset
+4. See REPLIT_SETUP.md "Common Issues" section
+

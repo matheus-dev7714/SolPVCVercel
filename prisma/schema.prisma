@@ -1,0 +1,143 @@
+// Prisma schema for SOLPVE
+// Prediction vs Environment (PvE) pools on Solana
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Pool {
+  id                   Int      @id @default(autoincrement())
+  token                String
+  mint                 String   // Solana mint address (base58)
+  logoUrl              String?  @map("logo_url")
+
+  // Timestamps (Unix seconds)
+  startTs              BigInt   @map("start_ts")
+  lockTs               BigInt   @map("lock_ts")
+  endTs                BigInt   @map("end_ts")
+
+  // AI Prediction
+  lineBps              Int      @map("line_bps") // Basis points (300 = +3.00%)
+  poolType             PoolType @default(PvMarket) @map("pool_type") // PvMarket | PvAI
+
+  // Pool Status
+  status               String   // OPEN/LOCKED/RESOLVED/VOID
+  winner               String?  // Over/Under/Void/NULL
+
+  // Totals (lamports)
+  totalOverLamports    BigInt   @default(0) @map("total_over_lamports")
+  totalUnderLamports   BigInt   @default(0) @map("total_under_lamports")
+
+  // AI Model Data
+  aiConfidence         Float    @map("ai_confidence") // 0.00 to 1.00
+  aiModel              String   @map("ai_model")
+  aiCommit             String   @map("ai_commit") // 0x + 64 hex chars
+  aiPayloadUrl         String?  @map("ai_payload_url")
+
+  // Proof Data
+  proofHash            String?  @map("proof_hash")
+  proofUrl             String?  @map("proof_url")
+
+  // Solana Contract Data
+  contractAddress      String?  @map("contract_address")
+  contractUrl          String?  @map("contract_url") // Solscan link
+
+  // Timestamps
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  entries              Entry[]
+  priceHistory         PriceHistory[]
+  aiLineHistory        AiLineHistory[]
+  resolutions          Resolution[]
+
+  @@index([status], name: "idx_status")
+  @@index([lockTs], name: "idx_lock_ts")
+  @@index([endTs], name: "idx_end_ts")
+  @@map("pools")
+}
+
+model Entry {
+  id                   Int      @id @default(autoincrement())
+  poolId               Int      @map("pool_id")
+  userPubkey           String   @map("user_pubkey")
+  side                 String   // Over/Under
+  amountLamports       BigInt   @map("amount_lamports") // User's deposit (after fee)
+  feeLamports          BigInt   @map("fee_lamports") // Fee collected
+  txSignature          String?  @map("tx_signature")
+  claimed              Boolean  @default(false)
+  claimTxSignature     String?  @map("claim_tx_signature")
+  // Snapshot data at entry time (optional, for chart markers and UX)
+  priceAtEntry         Float?   @map("price_at_entry")
+  aiLineBpsAtEntry     Int?     @map("ai_line_bps_at_entry")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  // Relations
+  pool                 Pool     @relation(fields: [poolId], references: [id])
+
+  @@index([poolId, userPubkey], name: "idx_pool_user")
+  @@index([userPubkey], name: "idx_user")
+  @@index([poolId, side], name: "idx_pool_side")
+  @@index([poolId, claimed], name: "idx_claimed")
+  @@map("entries")
+}
+
+// Historical AI line values (for PvAI pools)
+model AiLineHistory {
+  id        Int     @id @default(autoincrement())
+  poolId    Int     @map("pool_id")
+  timestamp BigInt  // Unix seconds
+  lineBps   Int     @map("line_bps")
+  source    String  // 'model' | 'event' | 'skew-adjust' | etc.
+  note      String? // optional metadata
+
+  // Relations
+  pool      Pool    @relation(fields: [poolId], references: [id])
+
+  @@index([poolId, timestamp], name: "idx_pool_ai_line_time")
+  @@map("ai_line_history")
+}
+
+enum PoolType {
+  PvMarket
+  PvAI
+}
+
+model PriceHistory {
+  id                   Int      @id @default(autoincrement())
+  poolId               Int      @map("pool_id")
+  timestamp            BigInt   // Unix timestamp
+  price                Float    // Price value
+  source               String   // API source (e.g., "Jupiter", "Birdeye")
+
+  // Relations
+  pool                 Pool     @relation(fields: [poolId], references: [id])
+
+  @@index([poolId, timestamp], name: "idx_pool_time")
+  @@map("price_history")
+}
+
+model Resolution {
+  id                   Int      @id @default(autoincrement())
+  poolId               Int      @map("pool_id")
+  resolverId           String   @map("resolver_id") // Bot/Oracle identifier
+  finalPrice           Float    @map("final_price")
+  startPrice           Float    @map("start_price")
+  priceChangeBps       Int      @map("price_change_bps") // Calculated change
+  winnerSide           String   @map("winner_side") // Over/Under/Void
+  proofData            String   @map("proof_data") // Full oracle response (JSON as string)
+  resolvedAt           DateTime @default(now()) @map("resolved_at")
+  txSignature          String?  @map("tx_signature") // On-chain resolution tx
+
+  // Relations
+  pool                 Pool     @relation(fields: [poolId], references: [id])
+
+  @@index([poolId], name: "idx_pool")
+  @@map("resolutions")
+}

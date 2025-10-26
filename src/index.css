@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Light mode colors in HSL */
+  --background: 0 0% 100%;
+  --foreground: 0 0% 14.5%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 14.5%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 14.5%;
+  --primary: 0 0% 20.5%;
+  --primary-foreground: 0 0% 98.5%;
+  --secondary: 0 0% 97%;
+  --secondary-foreground: 0 0% 20.5%;
+  --muted: 0 0% 97%;
+  --muted-foreground: 0 0% 55.6%;
+  --accent: 0 0% 97%;
+  --accent-foreground: 0 0% 20.5%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 92.2%;
+  --input: 0 0% 92.2%;
+  --ring: 0 0% 70.8%;
+  --chart-1: 25 95% 53%;
+  --chart-2: 173 58% 39%;
+  --chart-3: 197 37% 24%;
+  --chart-4: 43 74% 66%;
+  --chart-5: 27 87% 67%;
+  --radius: 0.625rem;
+}
+
+.dark {
+  /* Deep space blue background theme in HSL */
+  --background: 220 60% 8%; /* Deep space blue #0a0f1e */
+  --foreground: 215 100% 93%; /* Light blue-tinted text #e6f0ff */
+  --card: 222 47% 11%; /* Panel background #0f172a */
+  --card-foreground: 215 100% 93%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 215 100% 93%;
+  --primary: 215 100% 93%;
+  --primary-foreground: 220 60% 8%;
+  --secondary: 217 33% 17%; /* #1e293b */
+  --secondary-foreground: 215 100% 93%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 30% 68%; /* #9fb0c9 */
+  --accent: 217 33% 17%;
+  --accent-foreground: 215 100% 93%;
+  --destructive: 0 100% 63%; /* #ff4444 */
+  --destructive-foreground: 215 100% 93%;
+  --border: 220 35% 19%; /* #1f2a44 */
+  --input: 217 33% 17%;
+  --ring: 190 100% 50%; /* Aqua #00d4ff */
+  --chart-1: 258 90% 61%; /* Violet purple #8B5CF6 */
+  --chart-2: 190 100% 50%; /* Aqua #00d4ff */
+  --chart-3: 155 100% 50%; /* Neon green #00ffa3 */
+  --chart-4: 48 100% 52%; /* Yellow #ffd60a */
+  --chart-5: 0 100% 63%; /* Red #ff4444 */
+  --radius: 1rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
+
+/* Custom utility classes for the SOLPVE design system */
+@layer utilities {
+  /* Hide native number input spinners */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  .glass-panel {
+    background: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border));
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, #00d4ff 0%, #8B5CF6 100%);
+  }
+
+  .text-neon-green {
+    color: hsl(155 100% 50%);
+  }
+
+  .text-aqua {
+    color: hsl(190 100% 50%);
+  }
+
+  .text-neon-purple {
+    color: hsl(258 90% 61%);
+  }
+
+  .text-yellow {
+    color: hsl(48 100% 52%);
+  }
+
+  .bg-neon-green {
+    background-color: hsl(155 100% 50%);
+  }
+
+  .bg-aqua {
+    background-color: hsl(190 100% 50%);
+  }
+
+  .bg-neon-purple {
+    background-color: hsl(258 90% 61%);
+  }
+
+  .border-neon-green {
+    border-color: hsl(155 100% 50%);
+  }
+
+  .border-aqua {
+    border-color: hsl(190 100% 50%);
+  }
+
+  .border-neon-purple {
+    border-color: hsl(258 90% 61%);
+  }
+}
+
+
