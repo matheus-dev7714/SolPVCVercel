@@ -140,7 +140,7 @@ export async function updatePoolTotals(
       .single()
 
     if (pool) {
-      const currentValue = BigInt(pool[field] || 0)
+      const currentValue = BigInt(pool[field as keyof typeof pool] || 0)
       const newValue = currentValue + amountLamports
 
       await supabase
