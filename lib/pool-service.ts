@@ -1,60 +1,70 @@
 /**
  * Pool Service
- * Database operations for pools
+ * Database operations for pools using Supabase
  */
 
-import { prisma } from './prisma'
+import { getSupabaseServer } from './supabase'
 import type { PoolListItem, PoolDetail, Status, Side } from '@/types/pve'
-import type { Prisma } from '@prisma/client'
 
 /**
  * Get top pools by volume for homepage
  * Returns active (OPEN/LOCKED) pools sorted by total volume
  */
 export async function getTopPools(limit = 6): Promise<PoolListItem[]> {
-  const pools = await prisma.pool.findMany({
-    where: {
-      status: {
-        in: ['OPEN', 'LOCKED'],
-      },
-    },
-    orderBy: [
-      {
-        totalOverLamports: 'desc',
-      },
-      {
-        totalUnderLamports: 'desc',
-      },
-    ],
-    take: limit,
-  })
+  const supabase = getSupabaseServer()
+  
+  const { data: pools, error } = await supabase
+    .from('pools')
+    .select('*')
+    .in('status', ['OPEN', 'LOCKED'])
+    .order('total_over_lamports', { ascending: false })
+    .order('total_under_lamports', { ascending: false })
+    .limit(limit)
 
-  return pools.map(poolToListItem)
+  if (error) {
+    console.error('Error fetching top pools:', error)
+    return []
+  }
+
+  return (pools || []).map(poolToListItem)
 }
 
 /**
  * Get pool by ID with full details
  */
 export async function getPoolById(id: number): Promise<PoolDetail | null> {
-  const pool = await prisma.pool.findUnique({
-    where: { id },
-    include: {
-      priceHistory: {
-        orderBy: {
-          timestamp: 'asc',
-        },
-      },
-      aiLineHistory: {
-        orderBy: {
-          timestamp: 'asc',
-        },
-      },
-    },
-  })
+  const supabase = getSupabaseServer()
+  
+  const { data: pool, error } = await supabase
+    .from('pools')
+    .select(`
+      *,
+      price_history:price_history(*),
+      ai_line_history:ai_line_history(*)
+    `)
+    .eq('id', id)
+    .single()
 
-  if (!pool) return null
+  if (error || !pool) {
+    console.error('Error fetching pool:', error)
+    return null
+  }
 
-  return poolToDetail(pool)
+  // Fetch price history
+  const { data: priceHistory } = await supabase
+    .from('price_history')
+    .select('*')
+    .eq('pool_id', id)
+    .order('timestamp', { ascending: true })
+
+  // Fetch AI line history
+  const { data: aiLineHistory } = await supabase
+    .from('ai_line_history')
+    .select('*')
+    .eq('pool_id', id)
+    .order('timestamp', { ascending: true })
+
+  return poolToDetail({ ...pool, price_history: priceHistory || [], ai_line_history: aiLineHistory || [] })
 }
 
 /**
@@ -75,16 +85,30 @@ export async function createPool(data: {
   contractAddress?: string | null
   contractUrl?: string | null
 }): Promise<PoolDetail> {
-  const pool = await prisma.pool.create({
-    data: {
+  const supabase = getSupabaseServer()
+  
+  const { data: pool, error } = await supabase
+    .from('pools')
+    .insert({
       ...data,
+      logo_url: data.logoUrl,
+      start_ts: data.startTs.toString(),
+      lock_ts: data.lockTs.toString(),
+      end_ts: data.endTs.toString(),
+      line_bps: data.lineBps,
+      pool_type: 'PvAI',
       status: 'OPEN',
-    },
-    include: {
-      priceHistory: true,
-    },
-  })
+      ai_confidence: data.aiConfidence,
+      ai_model: data.aiModel,
+      ai_commit: data.aiCommit,
+      ai_payload_url: data.aiPayloadUrl,
+      contract_address: data.contractAddress,
+      contract_url: data.contractUrl,
+    })
+    .select()
+    .single()
 
+  if (error) throw error
   return poolToDetail(pool)
 }
 
@@ -96,17 +120,35 @@ export async function updatePoolTotals(
   side: Side,
   amountLamports: bigint
 ): Promise<void> {
-  const field =
-    side === 'Over' ? 'totalOverLamports' : 'totalUnderLamports'
+  const supabase = getSupabaseServer()
+  
+  const field = side === 'Over' ? 'total_over_lamports' : 'total_under_lamports'
 
-  await prisma.pool.update({
-    where: { id: poolId },
-    data: {
-      [field]: {
-        increment: amountLamports,
-      },
-    },
+  const { error } = await supabase.rpc('increment_pool_total', {
+    pool_id: poolId,
+    field_name: field,
+    increment_value: amountLamports.toString(),
   })
+
+  if (error) {
+    console.error('Error updating pool totals:', error)
+    // Fallback to manual update
+    const { data: pool } = await supabase
+      .from('pools')
+      .select(field)
+      .eq('id', poolId)
+      .single()
+
+    if (pool) {
+      const currentValue = BigInt(pool[field] || 0)
+      const newValue = currentValue + amountLamports
+
+      await supabase
+        .from('pools')
+        .update({ [field]: newValue.toString() })
+        .eq('id', poolId)
+    }
+  }
 }
 
 /**
@@ -116,10 +158,14 @@ export async function updatePoolStatus(
   poolId: number,
   status: Status
 ): Promise<void> {
-  await prisma.pool.update({
-    where: { id: poolId },
-    data: { status },
-  })
+  const supabase = getSupabaseServer()
+  
+  const { error } = await supabase
+    .from('pools')
+    .update({ status })
+    .eq('id', poolId)
+
+  if (error) throw error
 }
 
 /**
@@ -134,29 +180,35 @@ export async function updatePoolResolution(
     proofUrl: string
   }
 ): Promise<void> {
-  await prisma.pool.update({
-    where: { id: poolId },
-    data,
-  })
+  const supabase = getSupabaseServer()
+  
+  const { error } = await supabase
+    .from('pools')
+    .update({
+      status: data.status,
+      winner: data.winner,
+      proof_hash: data.proofHash,
+      proof_url: data.proofUrl,
+    })
+    .eq('id', poolId)
+
+  if (error) throw error
 }
 
 /**
  * Get pools that need to be locked (current time >= lock_ts)
  */
 export async function getPoolsToLock(): Promise<PoolDetail[]> {
+  const supabase = getSupabaseServer()
   const now = Math.floor(Date.now() / 1000)
 
-  const pools = await prisma.pool.findMany({
-    where: {
-      status: 'OPEN',
-      lockTs: {
-        lte: BigInt(now),
-      },
-    },
-    include: {
-      priceHistory: true,
-    },
-  })
+  const { data: pools, error } = await supabase
+    .from('pools')
+    .select('*')
+    .eq('status', 'OPEN')
+    .lte('lock_ts', now.toString())
+
+  if (error || !pools) return []
 
   return pools.map(poolToDetail)
 }
@@ -165,19 +217,16 @@ export async function getPoolsToLock(): Promise<PoolDetail[]> {
  * Get pools that need to be resolved (current time >= end_ts)
  */
 export async function getPoolsToResolve(): Promise<PoolDetail[]> {
+  const supabase = getSupabaseServer()
   const now = Math.floor(Date.now() / 1000)
 
-  const pools = await prisma.pool.findMany({
-    where: {
-      status: 'LOCKED',
-      endTs: {
-        lte: BigInt(now),
-      },
-    },
-    include: {
-      priceHistory: true,
-    },
-  })
+  const { data: pools, error } = await supabase
+    .from('pools')
+    .select('*')
+    .eq('status', 'LOCKED')
+    .lte('end_ts', now.toString())
+
+  if (error || !pools) return []
 
   return pools.map(poolToDetail)
 }
@@ -186,13 +235,15 @@ export async function getPoolsToResolve(): Promise<PoolDetail[]> {
  * Get all pools (for admin)
  */
 export async function getAllPools(): Promise<PoolListItem[]> {
-  const pools = await prisma.pool.findMany({
-    orderBy: {
-      createdAt: 'desc',
-    },
-  })
+  const supabase = getSupabaseServer()
+  
+  const { data: pools, error } = await supabase
+    .from('pools')
+    .select('*')
+    .order('created_at', { ascending: false })
 
-  return pools.map(poolToListItem)
+  if (error) return []
+  return (pools || []).map(poolToListItem)
 }
 
 /**
@@ -204,51 +255,59 @@ export async function storePricePoint(
   price: number,
   source: string
 ): Promise<void> {
-  await prisma.priceHistory.create({
-    data: {
-      poolId,
-      timestamp,
+  const supabase = getSupabaseServer()
+  
+  const { error } = await supabase
+    .from('price_history')
+    .insert({
+      pool_id: poolId,
+      timestamp: timestamp.toString(),
       price,
       source,
-    },
-  })
+    })
+
+  if (error) console.error('Error storing price point:', error)
 }
 
 /**
  * Get price history for a pool
  */
 export async function getPriceHistory(poolId: number) {
-  return await prisma.priceHistory.findMany({
-    where: { poolId },
-    orderBy: {
-      timestamp: 'asc',
-    },
-  })
+  const supabase = getSupabaseServer()
+  
+  const { data, error } = await supabase
+    .from('price_history')
+    .select('*')
+    .eq('pool_id', poolId)
+    .order('timestamp', { ascending: true })
+
+  if (error) return []
+  return data || []
 }
 
-// Helper functions to convert Prisma models to frontend types
+// Helper functions to convert database models to frontend types
 
 function poolToListItem(pool: any): PoolListItem {
   return {
     id: pool.id,
     token: pool.token,
     mint: pool.mint,
-    logo: pool.logoUrl,
-    line_bps: pool.lineBps,
-    confidence: Number(pool.aiConfidence),
-    lock_ts: Number(pool.lockTs),
-    end_ts: Number(pool.endTs),
+    logo: pool.logo_url,
+    line_bps: pool.line_bps,
+    confidence: Number(pool.ai_confidence),
+    lock_ts: Number(pool.lock_ts),
+    end_ts: Number(pool.end_ts),
     totals: {
-      over: Number(pool.totalOverLamports),
-      under: Number(pool.totalUnderLamports),
+      over: Number(pool.total_over_lamports),
+      under: Number(pool.total_under_lamports),
     },
     status: pool.status as Status,
-    pool_type: pool.poolType,
+    pool_type: pool.pool_type,
     ai: {
-      confidence: Number(pool.aiConfidence),
-      model: pool.aiModel,
-      commit: pool.aiCommit,
-      payload_url: pool.aiPayloadUrl,
+      confidence: Number(pool.ai_confidence),
+      model: pool.ai_model,
+      commit: pool.ai_commit,
+      payload_url: pool.ai_payload_url,
     },
   }
 }
@@ -258,38 +317,38 @@ function poolToDetail(pool: any): PoolDetail {
     id: pool.id,
     token: pool.token,
     mint: pool.mint,
-    logo: pool.logoUrl,
-    start_ts: Number(pool.startTs),
-    lock_ts: Number(pool.lockTs),
-    end_ts: Number(pool.endTs),
-    line_bps: pool.lineBps,
-    pool_type: pool.poolType,
+    logo: pool.logo_url,
+    start_ts: Number(pool.start_ts),
+    lock_ts: Number(pool.lock_ts),
+    end_ts: Number(pool.end_ts),
+    line_bps: pool.line_bps,
+    pool_type: pool.pool_type,
     ai: {
-      confidence: Number(pool.aiConfidence),
-      model: pool.aiModel,
-      commit: pool.aiCommit,
-      payload_url: pool.aiPayloadUrl,
+      confidence: Number(pool.ai_confidence),
+      model: pool.ai_model,
+      commit: pool.ai_commit,
+      payload_url: pool.ai_payload_url,
     },
     totals: {
-      over: Number(pool.totalOverLamports),
-      under: Number(pool.totalUnderLamports),
+      over: Number(pool.total_over_lamports),
+      under: Number(pool.total_under_lamports),
     },
     status: pool.status as Status,
     winner: pool.winner as Side | 'Void' | null,
     proof: {
-      hash: pool.proofHash,
-      url: pool.proofUrl,
+      hash: pool.proof_hash,
+      url: pool.proof_url,
     },
-    chart: (pool.priceHistory || []).map((point: any) => ({
+    chart: (pool.price_history || []).map((point: any) => ({
       t: Number(point.timestamp),
       p: Number(point.price),
     })),
-    ai_line_history: (pool.aiLineHistory || []).map((h: any) => ({
+    ai_line_history: (pool.ai_line_history || []).map((h: any) => ({
       t: Number(h.timestamp),
-      line_bps: Number(h.lineBps),
+      line_bps: Number(h.line_bps),
       source: h.source,
       note: h.note,
     })),
-    contract_url: pool.contractUrl,
+    contract_url: pool.contract_url,
   }
 }
